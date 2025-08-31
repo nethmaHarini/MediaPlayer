@@ -1,4 +1,0 @@
-# Minimal requirements for testing (no AI processing)
-Flask>=2.0.0
-Flask-CORS>=3.0.0
-Werkzeug>=2.0.0
