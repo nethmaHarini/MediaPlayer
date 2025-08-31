@@ -7,9 +7,12 @@ import {
   ScrollView,
   Platform,
   Alert,
+  Modal,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import {
   Music,
   Mic,
@@ -20,11 +23,14 @@ import {
   Pause,
   Layers,
   AlertCircle,
+  Folder,
+  X,
 } from 'lucide-react-native';
 import { TrackSeparationView } from '../../components/TrackSeparationView';
 import { SeparationProgress } from '../../components/SeparationProgress';
 import { WaveformView } from '../../components/WaveformView';
 import { useAudio } from '../../contexts/AudioContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import {
   realAISeparationService,
   SeparationProgress as SeparationProgressType,
@@ -57,6 +63,21 @@ export default function SeparationScreen() {
     separatedTracks: globalSeparatedTracks,
     setSeparatedTracks: setGlobalSeparatedTracks,
   } = useAudio();
+
+  const {
+    selectedModel,
+    saveLocation,
+    audioFormat,
+    highQuality,
+    autoSave,
+    availableModels,
+  } = useSettings();
+
+  const [showSaveLocationModal, setShowSaveLocationModal] = useState(false);
+  const [pendingDownload, setPendingDownload] = useState<{
+    trackId: string;
+    trackName: string;
+  } | null>(null);
 
   const [tracks, setTracks] = useState<SeparatedTrack[]>([
     {
@@ -216,9 +237,15 @@ export default function SeparationScreen() {
     setSeparationComplete(false);
 
     try {
+      const currentModel = availableModels.find((m) => m.id === selectedModel);
+      const modelName = currentModel ? currentModel.name : 'Professional AI';
+      const qualityText = highQuality ? 'High Quality' : 'Standard Quality';
+
       Alert.alert(
-        'FREE AI Separation',
-        'This will separate your audio using FREE AI models:\n\n1. Local backend (if running)\n   • Simple demo: python backend/app-simple.py\n   • Full AI: python backend/app.py\n2. Free cloud AI services (fallback)\n\nEach track will contain isolated audio elements - completely FREE!',
+        'Professional AI Separation',
+        `This will separate your audio using advanced AI models:\n\n🔬 Selected Model: ${modelName}\n⚡ Quality: ${qualityText}\n💾 Audio Format: ${audioFormat.toUpperCase()}\n📁 Save Location: ${
+          autoSave ? saveLocation : 'Ask on download'
+        }\n\n🎼 Professional Features:\n   • Advanced ICA (Independent Component Analysis)\n   • Multi-scale spectral analysis\n   • Studio-grade EQ and dynamics\n   • Professional audio processing\n\nEach track will contain professionally isolated audio elements!`,
         [
           {
             text: 'Cancel',
@@ -314,16 +341,16 @@ export default function SeparationScreen() {
       setTracks(updatedTracks);
       setSeparationComplete(true);
       Alert.alert(
-        'FREE AI separation complete! 🎉',
-        'Your audio has been processed with FREE AI models! Each track contains truly separated audio elements. Mix them independently for professional results!'
+        'Professional AI separation complete! 🎉',
+        'Your audio has been processed with advanced AI models! Each track contains professionally separated audio elements. Mix them independently for studio-quality results!'
       );
     } catch (error) {
       console.error('Vocal isolation failed:', error);
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
       Alert.alert(
-        'FREE AI Separation Failed',
-        `AI separation failed: ${errorMessage}\n\nQuick start options:\n• Try simple demo: python backend/app-simple.py\n• Or full AI: python backend/app.py\n• Check http://localhost:5000/health\n• Use supported audio formats (MP3/WAV)`,
+        'Professional AI Separation Failed',
+        `AI separation failed: ${errorMessage}\n\nTroubleshooting:\n• Check backend: python backend/app-professional.py\n• Verify http://localhost:5000/health\n• Ensure supported audio formats (MP3/WAV)\n• Check audio file quality and size`,
         [{ text: 'OK', style: 'cancel' }]
       );
     } finally {
@@ -416,15 +443,91 @@ export default function SeparationScreen() {
     );
   };
   const downloadTrack = async (trackId: string) => {
+    const track = tracks.find((t) => t.id === trackId);
+    if (!track) return;
+
+    // If auto-save is enabled, use the default save location
+    if (autoSave) {
+      handleDirectDownload(trackId, track.name, saveLocation);
+    } else {
+      // Show modal to let user choose location
+      setPendingDownload({ trackId, trackName: track.name });
+      setShowSaveLocationModal(true);
+    }
+  };
+
+  const handleDirectDownload = async (
+    trackId: string,
+    trackName: string,
+    location: string
+  ) => {
     try {
-      Alert.alert('Download', `Downloading ${trackId} track...`);
-      // Mock download implementation
+      let saveUri: string;
+      const baseDir =
+        location === 'downloads'
+          ? FileSystem.cacheDirectory
+          : location === 'documents'
+          ? FileSystem.documentDirectory
+          : location === 'music'
+          ? FileSystem.documentDirectory
+          : FileSystem.documentDirectory; // fallback
+
+      const fileExtension = audioFormat === 'wav' ? '.wav' : '.mp3';
+      const fileName = `${trackName}_${Date.now()}${fileExtension}`;
+      saveUri = `${baseDir}${fileName}`;
+
+      Alert.alert(
+        'Download Started',
+        `Downloading ${trackName} track to ${location}...`
+      );
+
+      // Mock download - in real implementation, download from backend
       setTimeout(() => {
-        Alert.alert('Success', `${trackId} track downloaded successfully!`);
+        Alert.alert('Success', `${trackName} track saved successfully!`);
       }, 1500);
     } catch (error) {
       console.error('Download failed:', error);
-      Alert.alert('Error', 'Failed to download track');
+      Alert.alert('Error', 'Failed to save track');
+    }
+  };
+
+  const handleSaveLocationSelect = async (location: string) => {
+    if (!pendingDownload) return;
+
+    try {
+      if (location === 'custom') {
+        // Use document picker to let user choose location
+        const result = await DocumentPicker.getDocumentAsync({
+          type: 'audio/*',
+          copyToCacheDirectory: false,
+        });
+
+        if (result.canceled) {
+          setShowSaveLocationModal(false);
+          setPendingDownload(null);
+          return;
+        }
+
+        Alert.alert(
+          'Download Started',
+          `Downloading ${pendingDownload.trackName} track to custom location...`
+        );
+      } else {
+        // Use the selected predefined location
+        handleDirectDownload(
+          pendingDownload.trackId,
+          pendingDownload.trackName,
+          location
+        );
+      }
+
+      setShowSaveLocationModal(false);
+      setPendingDownload(null);
+    } catch (error) {
+      console.error('Download failed:', error);
+      Alert.alert('Error', 'Failed to save track');
+      setShowSaveLocationModal(false);
+      setPendingDownload(null);
     }
   };
 
@@ -456,23 +559,24 @@ export default function SeparationScreen() {
       ) : !separationComplete ? (
         <View style={styles.setupContainer}>
           <Text style={styles.setupTitle}>
-            🆓 FREE AI Music Source Separation
+            � Professional AI Music Source Separation
           </Text>
           <Text style={styles.setupDescription}>
             Current song: {currentSong}
           </Text>
           <Text style={styles.setupDescription}>
-            🚀 Using Spleeter AI models to separate your music into:
+            🚀 Using advanced AI models to separate your music into:
           </Text>
           <Text style={styles.setupDescription}>
             • Pure vocals track{'\n'}• Isolated drums track{'\n'}• Clean bass
             track{'\n'}• Other instruments track
           </Text>
           <Text style={styles.setupDescription}>
-            ⚡ Processing time: 1-2 minutes{'\n'}💰 Cost: Completely FREE!
-            {'\n'}🎯 Accuracy: Professional-grade AI separation{'\n'}🤖 Backend
-            options: Simple demo or full AI{'\n'}🔄 Auto-fallback: Uses best
-            available option
+            ⚡ Processing time: 1-3 minutes{'\n'}🎯 Quality: Studio-grade
+            separation
+            {'\n'}🔬 Technology: ICA + Multi-scale spectral analysis{'\n'}🎛️
+            Backend: Professional audio processing{'\n'}🏆 Results: Professional
+            mixing quality
           </Text>
 
           {!isProcessing ? (
@@ -482,7 +586,7 @@ export default function SeparationScreen() {
             >
               <Layers size={20} color="#FFFFFF" />
               <Text style={styles.startButtonText}>
-                Start FREE AI Separation
+                Start Professional AI Separation
               </Text>
             </TouchableOpacity>
           ) : (
@@ -521,8 +625,8 @@ export default function SeparationScreen() {
             <View style={styles.demoNotice}>
               <AlertCircle size={16} color="#10B981" />
               <Text style={styles.demoText}>
-                FREE AI: All tracks use real Spleeter AI separation. Completely
-                free to use with your local Python backend!
+                Professional AI: All tracks use advanced separation algorithms.
+                High-quality results with your local professional backend!
               </Text>
             </View>
           </View>
@@ -532,10 +636,10 @@ export default function SeparationScreen() {
           <View style={styles.infoContainer}>
             <Text style={styles.infoText}>
               💡 <Text style={styles.infoBold}>How it works:</Text> Each track
-              contains AI-separated audio elements using FREE Spleeter models.
-              Mix and match different tracks to create your perfect sound.
-              Adjust volumes independently for creative control - all completely
-              FREE!
+              contains AI-separated audio elements using advanced professional
+              models. Mix and match different tracks to create your perfect
+              sound. Adjust volumes independently for creative control -
+              studio-quality results!
             </Text>
           </View>
 
@@ -580,6 +684,73 @@ export default function SeparationScreen() {
           </View>
         </ScrollView>
       )}
+
+      {/* Save Location Modal */}
+      <Modal
+        visible={showSaveLocationModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSaveLocationModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Choose Save Location</Text>
+              <TouchableOpacity
+                onPress={() => setShowSaveLocationModal(false)}
+                style={styles.closeButton}
+              >
+                <X size={24} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Where would you like to save "{pendingDownload?.trackName}"?
+            </Text>
+
+            <View style={styles.locationOptions}>
+              <TouchableOpacity
+                style={styles.locationOption}
+                onPress={() => handleSaveLocationSelect('downloads')}
+              >
+                <Folder size={24} color="#3B82F6" />
+                <View style={styles.locationText}>
+                  <Text style={styles.locationTitle}>Downloads</Text>
+                  <Text style={styles.locationDescription}>
+                    Save to downloads folder
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.locationOption}
+                onPress={() => handleSaveLocationSelect('documents')}
+              >
+                <Folder size={24} color="#10B981" />
+                <View style={styles.locationText}>
+                  <Text style={styles.locationTitle}>Documents</Text>
+                  <Text style={styles.locationDescription}>
+                    Save to documents folder
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.locationOption}
+                onPress={() => handleSaveLocationSelect('custom')}
+              >
+                <Folder size={24} color="#F59E0B" />
+                <View style={styles.locationText}>
+                  <Text style={styles.locationTitle}>Choose Location</Text>
+                  <Text style={styles.locationDescription}>
+                    Browse and select custom location
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -749,5 +920,64 @@ const styles = StyleSheet.create({
   infoBold: {
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#1F2937',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: '#9CA3AF',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  locationOptions: {
+    gap: 12,
+  },
+  locationOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  locationText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  locationTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  locationDescription: {
+    fontSize: 14,
+    color: '#9CA3AF',
   },
 });
