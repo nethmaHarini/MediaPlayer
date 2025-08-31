@@ -10,15 +10,15 @@ import {
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
-import { 
-  Play, 
-  Pause, 
-  SkipBack, 
-  SkipForward, 
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
   Volume2,
   Repeat,
   Download,
-  Music
+  Music,
 } from 'lucide-react-native';
 import { WaveformView } from '../../components/WaveformView';
 import { VolumeSlider } from '../../components/VolumeSlider';
@@ -45,10 +45,29 @@ export default function PlayerScreen() {
     volume: 1,
     isLooping: false,
   });
-  const [songUrl, setSongUrl] = useState('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3');
+  const [songUrl, setSongUrl] = useState(
+    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
+  );
   const [currentSong, setCurrentSong] = useState('SoundHelix Demo Song');
 
   useEffect(() => {
+    // Initialize audio mode
+    const initializeAudio = async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: true,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+      } catch (error) {
+        console.error('Error setting audio mode:', error);
+      }
+    };
+
+    initializeAudio();
+
     return sound
       ? () => {
           sound.unloadAsync();
@@ -156,7 +175,7 @@ export default function PlayerScreen() {
 
       <View style={styles.playerContainer}>
         <Text style={styles.songTitle}>{currentSong}</Text>
-        
+
         <WaveformView
           duration={status.duration}
           position={status.position}
@@ -169,7 +188,10 @@ export default function PlayerScreen() {
         </View>
 
         <View style={styles.controlsContainer}>
-          <TouchableOpacity style={styles.control} onPress={() => seek(Math.max(0, status.position - 10000))}>
+          <TouchableOpacity
+            style={styles.control}
+            onPress={() => seek(Math.max(0, status.position - 10000))}
+          >
             <SkipBack size={28} color="#FFFFFF" />
           </TouchableOpacity>
 
@@ -181,17 +203,25 @@ export default function PlayerScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.control} onPress={() => seek(Math.min(status.duration, status.position + 10000))}>
+          <TouchableOpacity
+            style={styles.control}
+            onPress={() =>
+              seek(Math.min(status.duration, status.position + 10000))
+            }
+          >
             <SkipForward size={28} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
         <View style={styles.additionalControls}>
-          <TouchableOpacity 
-            style={[styles.control, status.isLooping && styles.activeControl]} 
+          <TouchableOpacity
+            style={[styles.control, status.isLooping && styles.activeControl]}
             onPress={toggleLoop}
           >
-            <Repeat size={24} color={status.isLooping ? "#8B5CF6" : "#9CA3AF"} />
+            <Repeat
+              size={24}
+              color={status.isLooping ? '#8B5CF6' : '#9CA3AF'}
+            />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.control} onPress={stop}>
@@ -203,13 +233,10 @@ export default function PlayerScreen() {
           </TouchableOpacity>
         </View>
 
-        <VolumeSlider
-          value={status.volume}
-          onValueChange={setVolume}
-        />
+        <VolumeSlider value={status.volume} onValueChange={setVolume} />
       </View>
 
-      <ChordDisplay 
+      <ChordDisplay
         position={status.position}
         duration={status.duration}
         isPlaying={status.isPlaying}
