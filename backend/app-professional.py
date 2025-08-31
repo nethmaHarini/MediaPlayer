@@ -171,6 +171,26 @@ def professional_source_separation(audio_file, sr=22050):
         harmonic_for_vocals = y_harmonic_fine[:len(vocals)] if len(y_harmonic_fine) >= len(vocals) else np.pad(y_harmonic_fine, (0, len(vocals) - len(y_harmonic_fine)), mode='constant')
         vocals = vocals * 0.85 + harmonic_for_vocals * 0.15  # Less harmonic content for cleaner vocals
         
+        # Method 4: Advanced vocal isolation using spectral gating
+        vocals_stft_final = librosa.stft(vocals, n_fft=2048, hop_length=512)
+        vocals_mag = np.abs(vocals_stft_final)
+        vocals_phase = np.angle(vocals_stft_final)
+        
+        # Apply spectral gating to reduce noise and instrumental bleed
+        # Calculate noise floor
+        noise_floor = np.percentile(vocals_mag, 20, axis=1, keepdims=True)
+        
+        # Create gate based on signal-to-noise ratio
+        snr_threshold = 3.0  # 3:1 ratio
+        gate_mask = vocals_mag > (noise_floor * snr_threshold)
+        
+        # Apply smooth gating to avoid artifacts
+        gate_mask = median_filter(gate_mask.astype(float), size=(3, 5))
+        
+        # Apply gate with soft transition
+        gated_vocals_stft = vocals_stft_final * gate_mask
+        vocals = librosa.istft(gated_vocals_stft, hop_length=512)
+        
     else:
         # Mono vocal extraction - use harmonic-percussive separation
         logger.info("Mono audio detected - using harmonic extraction for vocals")
@@ -339,26 +359,131 @@ def professional_source_separation(audio_file, sr=22050):
                         pass  # Skip if filter design fails
             
         elif track_type == 'bass':
-            # Bass EQ: tight low end
-            sos1 = signal.butter(4, 20, btype='high', fs=sr, output='sos')  # Remove sub-sonic
-            sos2 = signal.butter(6, 350, btype='low', fs=sr, output='sos')  # Low-pass
-            audio = signal.sosfilt(sos2, signal.sosfilt(sos1, audio))
+            # Professional Bass EQ: Deep, tight, and punchy (sample rate adaptive)
+            nyquist = sr / 2
+            
+            # 1. Remove sub-sonic rumble
+            hp_freq = min(25, nyquist * 0.05)
+            sos1 = signal.butter(4, hp_freq, btype='high', fs=sr, output='sos')
+            audio = signal.sosfilt(sos1, audio)
+            
+            # 2. Bass fundamental boost (40-120Hz)
+            bass_low = min(40, nyquist * 0.1)
+            bass_high = min(120, nyquist * 0.3)
+            if bass_high > bass_low:
+                sos2 = signal.butter(2, [bass_low, bass_high], btype='band', fs=sr, output='sos')
+                bass_fund = signal.sosfilt(sos2, audio)
+                audio = audio + bass_fund * 0.3
+            
+            # 3. Bass presence (120-300Hz)
+            if nyquist > 300:
+                pres_low = min(120, nyquist * 0.2)
+                pres_high = min(300, nyquist * 0.4)
+                sos3 = signal.butter(2, [pres_low, pres_high], btype='band', fs=sr, output='sos')
+                bass_pres = signal.sosfilt(sos3, audio)
+                audio = audio + bass_pres * 0.2
+            
+            # 4. Low-pass to remove high frequency bleed
+            lp_freq = min(400, nyquist * 0.6)
+            sos4 = signal.butter(6, lp_freq, btype='low', fs=sr, output='sos')
+            audio = signal.sosfilt(sos4, audio)
             
         elif track_type == 'drums':
-            # Drum EQ: punch and clarity
-            sos1 = signal.butter(2, 40, btype='high', fs=sr, output='sos')  # Clean up low end
+            # Professional Drum EQ: Punch, attack, and clarity (sample rate adaptive)
+            nyquist = sr / 2
+            
+            # 1. Clean up sub-bass
+            hp_freq = min(50, nyquist * 0.1)
+            sos1 = signal.butter(4, hp_freq, btype='high', fs=sr, output='sos')
             audio = signal.sosfilt(sos1, audio)
-            # Add punch at 60-120Hz and 2-6kHz
-            sos2 = signal.butter(1, [60, 120], btype='band', fs=sr, output='sos')
-            sos3 = signal.butter(1, [2000, 6000], btype='band', fs=sr, output='sos')
-            punch_low = signal.sosfilt(sos2, audio)
-            punch_high = signal.sosfilt(sos3, audio)
-            audio = audio + punch_low * 0.1 + punch_high * 0.05
+            
+            # 2. Kick drum punch (60-120Hz)
+            kick_low = min(60, nyquist * 0.15)
+            kick_high = min(120, nyquist * 0.25)
+            if kick_high > kick_low:
+                sos2 = signal.butter(2, [kick_low, kick_high], btype='band', fs=sr, output='sos')
+                kick_punch = signal.sosfilt(sos2, audio)
+                audio = audio + kick_punch * 0.25
+            
+            # 3. Snare body (150-400Hz)
+            if nyquist > 400:
+                snare_low = min(150, nyquist * 0.3)
+                snare_high = min(400, nyquist * 0.5)
+                sos3 = signal.butter(2, [snare_low, snare_high], btype='band', fs=sr, output='sos')
+                snare_body = signal.sosfilt(sos3, audio)
+                audio = audio + snare_body * 0.15
+            
+            # 4. Snare crack (2-6kHz)
+            if nyquist > 6000:
+                crack_low = min(2000, nyquist * 0.4)
+                crack_high = min(6000, nyquist * 0.7)
+                sos4 = signal.butter(2, [crack_low, crack_high], btype='band', fs=sr, output='sos')
+                snare_crack = signal.sosfilt(sos4, audio)
+                audio = audio + snare_crack * 0.2
+            
+            # 5. Cymbals and hi-hats (8kHz+)
+            if nyquist > 8000:
+                cymbal_freq = min(8000, nyquist * 0.8)
+                sos5 = signal.butter(2, cymbal_freq, btype='high', fs=sr, output='sos')
+                cymbals = signal.sosfilt(sos5, audio)
+                audio = audio + cymbals * 0.1
             
         elif track_type == 'accompaniment':
-            # Accompaniment: balanced and warm
-            sos1 = signal.butter(1, 50, btype='high', fs=sr, output='sos')
+            # Professional Accompaniment EQ: Balanced, warm, and clear (sample rate adaptive)
+            nyquist = sr / 2
+            
+            # 1. Clean low end
+            hp_freq = min(60, nyquist * 0.1)
+            sos1 = signal.butter(2, hp_freq, btype='high', fs=sr, output='sos')
             audio = signal.sosfilt(sos1, audio)
+            
+            # 2. Warmth enhancement (200-600Hz)
+            if nyquist > 600:
+                warm_low = min(200, nyquist * 0.2)
+                warm_high = min(600, nyquist * 0.4)
+                sos2 = signal.butter(2, [warm_low, warm_high], btype='band', fs=sr, output='sos')
+                warmth = signal.sosfilt(sos2, audio)
+                audio = audio + warmth * 0.15
+            
+            # 3. Instrument clarity (1-4kHz)
+            if nyquist > 4000:
+                clarity_low = min(1000, nyquist * 0.3)
+                clarity_high = min(4000, nyquist * 0.6)
+                sos3 = signal.butter(2, [clarity_low, clarity_high], btype='band', fs=sr, output='sos')
+                clarity = signal.sosfilt(sos3, audio)
+                audio = audio + clarity * 0.12
+            
+            # 4. Sparkle (6-10kHz)
+            if nyquist > 10000:
+                sparkle_low = min(6000, nyquist * 0.6)
+                sparkle_high = min(10000, nyquist * 0.8)
+                sos4 = signal.butter(1, [sparkle_low, sparkle_high], btype='band', fs=sr, output='sos')
+                sparkle = signal.sosfilt(sos4, audio)
+                audio = audio + sparkle * 0.08
+                
+        elif track_type == 'other':
+            # Professional Other/Ambient EQ: Atmospheric and spacious
+            nyquist = sr / 2
+            
+            # 1. Gentle high-pass
+            hp_freq = min(40, nyquist * 0.08)
+            sos1 = signal.butter(2, hp_freq, btype='high', fs=sr, output='sos')
+            audio = signal.sosfilt(sos1, audio)
+            
+            # 2. Ambient enhancement (500Hz-2kHz)
+            if nyquist > 2000:
+                amb_low = min(500, nyquist * 0.3)
+                amb_high = min(2000, nyquist * 0.5)
+                sos2 = signal.butter(1, [amb_low, amb_high], btype='band', fs=sr, output='sos')
+                ambient = signal.sosfilt(sos2, audio)
+                audio = audio + ambient * 0.1
+            
+            # 3. High-frequency detail (4kHz+)
+            if nyquist > 4000:
+                detail_freq = min(4000, nyquist * 0.7)
+                sos3 = signal.butter(1, detail_freq, btype='high', fs=sr, output='sos')
+                detail = signal.sosfilt(sos3, audio)
+                audio = audio + detail * 0.06
             
         return audio
     
@@ -533,4 +658,4 @@ if __name__ == '__main__':
     logger.info("  GET  /download/<track_type>/<filename> - Download separated track")
     logger.info("  GET  /models - Get available AI models")
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)
