@@ -1,5 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  PanResponder,
+  Dimensions,
+} from 'react-native';
 import { Volume2, VolumeX, Download } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -20,33 +27,51 @@ interface TrackSeparationViewProps {
   onDownload: () => void;
 }
 
-export function TrackSeparationView({ 
-  track, 
-  onVolumeChange, 
-  onToggleMute, 
-  onDownload 
+export function TrackSeparationView({
+  track,
+  onVolumeChange,
+  onToggleMute,
+  onDownload,
 }: TrackSeparationViewProps) {
+  const screenWidth = Dimensions.get('window').width;
+  const sliderWidth = screenWidth - 120; // Account for padding and volume text
+
+  const handleSliderTouch = (event: any) => {
+    const { locationX } = event.nativeEvent;
+    const sliderPosition = Math.max(0, Math.min(1, locationX / sliderWidth));
+    onVolumeChange(sliderPosition);
+  };
+
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: handleSliderTouch,
+    onPanResponderMove: handleSliderTouch,
+  });
+
   return (
     <View style={styles.container}>
       <LinearGradient
         colors={[
           `${track.color}20`,
           `${track.color}10`,
-          'rgba(255, 255, 255, 0.05)'
+          'rgba(255, 255, 255, 0.05)',
         ]}
         style={styles.gradient}
       >
         <View style={styles.header}>
           <View style={styles.trackInfo}>
-            <View style={[styles.iconContainer, { backgroundColor: track.color }]}>
+            <View
+              style={[styles.iconContainer, { backgroundColor: track.color }]}
+            >
               <track.icon size={20} color="#FFFFFF" />
             </View>
             <Text style={styles.trackName}>{track.name}</Text>
           </View>
-          
+
           <View style={styles.actions}>
-            <TouchableOpacity 
-              style={styles.actionButton} 
+            <TouchableOpacity
+              style={styles.actionButton}
               onPress={onToggleMute}
             >
               {track.isMuted ? (
@@ -55,11 +80,8 @@ export function TrackSeparationView({
                 <Volume2 size={20} color="#9CA3AF" />
               )}
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.actionButton} 
-              onPress={onDownload}
-            >
+
+            <TouchableOpacity style={styles.actionButton} onPress={onDownload}>
               <Download size={20} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
@@ -68,15 +90,27 @@ export function TrackSeparationView({
         <View style={styles.volumeContainer}>
           <Text style={styles.volumeLabel}>Volume</Text>
           <View style={styles.sliderContainer}>
-            <View style={styles.sliderTrack}>
-              <View 
+            <View
+              style={[styles.sliderTrack, { width: sliderWidth }]}
+              {...panResponder.panHandlers}
+            >
+              <View
                 style={[
-                  styles.sliderFill, 
-                  { 
+                  styles.sliderFill,
+                  {
                     width: `${track.volume * 100}%`,
-                    backgroundColor: track.color 
-                  }
-                ]} 
+                    backgroundColor: track.color,
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.sliderThumb,
+                  {
+                    left: track.volume * sliderWidth - 6,
+                    backgroundColor: track.color,
+                  },
+                ]}
               />
             </View>
             <Text style={styles.volumeValue}>
@@ -151,16 +185,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sliderTrack: {
-    flex: 1,
     height: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 3,
     marginRight: 12,
     overflow: 'hidden',
+    position: 'relative',
   },
   sliderFill: {
     height: '100%',
     borderRadius: 3,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    top: -3,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   volumeValue: {
     fontSize: 14,

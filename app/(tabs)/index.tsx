@@ -1,28 +1,32 @@
 import React, { useState, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   Dimensions,
   Platform,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as DocumentPicker from 'expo-document-picker';
 import {
   Play,
   Pause,
   SkipBack,
   SkipForward,
-  Volume2,
   Repeat,
   Download,
   Music,
+  FolderOpen,
 } from 'lucide-react-native';
 import { WaveformView } from '../../components/WaveformView';
 import { VolumeSlider } from '../../components/VolumeSlider';
 import { ChordDisplay } from '../../components/ChordDisplay';
+import { useAudio } from '../../contexts/AudioContext';
 
 const { width } = Dimensions.get('window');
 
@@ -36,7 +40,17 @@ interface PlaybackStatus {
 }
 
 export default function PlayerScreen() {
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const {
+    selectedFile,
+    setSelectedFile,
+    sound,
+    setSound,
+    currentSong,
+    setCurrentSong,
+    setAudioUri,
+    stopAllSeparatedTracks,
+  } = useAudio();
+
   const [status, setStatus] = useState<PlaybackStatus>({
     isLoaded: false,
     isPlaying: false,
@@ -45,10 +59,21 @@ export default function PlayerScreen() {
     volume: 1,
     isLooping: false,
   });
-  const [songUrl, setSongUrl] = useState(
-    'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
+
+  // Stop separated tracks when focusing on home tab
+  useFocusEffect(
+    React.useCallback(() => {
+      const stopSeparatedTracks = async () => {
+        try {
+          await stopAllSeparatedTracks();
+        } catch (error) {
+          console.error('Error stopping separated tracks:', error);
+        }
+      };
+
+      stopSeparatedTracks();
+    }, [stopAllSeparatedTracks])
   );
-  const [currentSong, setCurrentSong] = useState('SoundHelix Demo Song');
 
   useEffect(() => {
     // Initialize audio mode
@@ -105,8 +130,29 @@ export default function PlayerScreen() {
 
       setSound(newSound);
       setCurrentSong(uri.split('/').pop()?.split('.')[0] || 'Unknown Song');
+      setAudioUri(uri); // Store URI for separation tab
     } catch (error) {
       console.error('Error loading audio:', error);
+      Alert.alert('Error', 'Failed to load audio file');
+    }
+  };
+
+  const pickAudioFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        copyToCacheDirectory: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        setSelectedFile(result);
+        setCurrentSong(file.name);
+        await loadAudio(file.uri);
+      }
+    } catch (error) {
+      console.error('Error picking file:', error);
+      Alert.alert('Error', 'Failed to pick audio file');
     }
   };
 
@@ -148,100 +194,96 @@ export default function PlayerScreen() {
   };
 
   return (
-    <LinearGradient
-      colors={['#1F2937', '#111827', '#000000']}
-      style={styles.container}
-    >
-      <View style={styles.header}>
-        <Music size={32} color="#8B5CF6" />
-        <Text style={styles.title}>Media Player</Text>
-      </View>
+    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+      <LinearGradient
+        colors={['#1F2937', '#111827', '#000000']}
+        style={styles.container}
+      >
+        <View style={styles.header}>
+          <Music size={32} color="#8B5CF6" />
+          <Text style={styles.title}>Media Player</Text>
+        </View>
 
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          value={songUrl}
-          onChangeText={setSongUrl}
-          placeholder="Enter song URL..."
-          placeholderTextColor="#9CA3AF"
-        />
-        <TouchableOpacity
-          style={styles.loadButton}
-          onPress={() => loadAudio(songUrl)}
-        >
-          <Text style={styles.loadButtonText}>Load</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.inputContainer}>
+          <TouchableOpacity
+            style={styles.filePickerButton}
+            onPress={pickAudioFile}
+          >
+            <FolderOpen size={20} color="#FFFFFF" />
+            <Text style={styles.filePickerText}>Select Audio File</Text>
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.playerContainer}>
-        <Text style={styles.songTitle}>{currentSong}</Text>
+        <View style={styles.playerContainer}>
+          <Text style={styles.songTitle}>{currentSong}</Text>
 
-        <WaveformView
-          duration={status.duration}
+          <WaveformView
+            duration={status.duration}
+            position={status.position}
+            onSeek={seek}
+          />
+
+          <View style={styles.timeContainer}>
+            <Text style={styles.timeText}>{formatTime(status.position)}</Text>
+            <Text style={styles.timeText}>{formatTime(status.duration)}</Text>
+          </View>
+
+          <View style={styles.controlsContainer}>
+            <TouchableOpacity
+              style={styles.control}
+              onPress={() => seek(Math.max(0, status.position - 10000))}
+            >
+              <SkipBack size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.playButton} onPress={playPause}>
+              {status.isPlaying ? (
+                <Pause size={32} color="#FFFFFF" />
+              ) : (
+                <Play size={32} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.control}
+              onPress={() =>
+                seek(Math.min(status.duration, status.position + 10000))
+              }
+            >
+              <SkipForward size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.additionalControls}>
+            <TouchableOpacity
+              style={[styles.control, status.isLooping && styles.activeControl]}
+              onPress={toggleLoop}
+            >
+              <Repeat
+                size={24}
+                color={status.isLooping ? '#8B5CF6' : '#9CA3AF'}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.control} onPress={stop}>
+              <Text style={styles.stopText}>Stop</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.control}>
+              <Download size={24} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+
+          <VolumeSlider value={status.volume} onValueChange={setVolume} />
+        </View>
+
+        <ChordDisplay
           position={status.position}
-          onSeek={seek}
+          duration={status.duration}
+          isPlaying={status.isPlaying}
         />
-
-        <View style={styles.timeContainer}>
-          <Text style={styles.timeText}>{formatTime(status.position)}</Text>
-          <Text style={styles.timeText}>{formatTime(status.duration)}</Text>
-        </View>
-
-        <View style={styles.controlsContainer}>
-          <TouchableOpacity
-            style={styles.control}
-            onPress={() => seek(Math.max(0, status.position - 10000))}
-          >
-            <SkipBack size={28} color="#FFFFFF" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.playButton} onPress={playPause}>
-            {status.isPlaying ? (
-              <Pause size={32} color="#FFFFFF" />
-            ) : (
-              <Play size={32} color="#FFFFFF" />
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.control}
-            onPress={() =>
-              seek(Math.min(status.duration, status.position + 10000))
-            }
-          >
-            <SkipForward size={28} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.additionalControls}>
-          <TouchableOpacity
-            style={[styles.control, status.isLooping && styles.activeControl]}
-            onPress={toggleLoop}
-          >
-            <Repeat
-              size={24}
-              color={status.isLooping ? '#8B5CF6' : '#9CA3AF'}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.control} onPress={stop}>
-            <Text style={styles.stopText}>Stop</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.control}>
-            <Download size={24} color="#9CA3AF" />
-          </TouchableOpacity>
-        </View>
-
-        <VolumeSlider value={status.volume} onValueChange={setVolume} />
-      </View>
-
-      <ChordDisplay
-        position={status.position}
-        duration={status.duration}
-        isPlaying={status.isPlaying}
-      />
-    </LinearGradient>
+      </LinearGradient>
+    </ScrollView>
   );
 }
 
@@ -249,6 +291,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 20,
   },
   header: {
     flexDirection: 'row',
@@ -263,27 +306,20 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   inputContainer: {
-    flexDirection: 'row',
     paddingHorizontal: 20,
     marginBottom: 30,
   },
-  input: {
-    flex: 1,
-    height: 50,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    color: '#FFFFFF',
-    fontSize: 16,
-    marginRight: 12,
-  },
-  loadButton: {
-    backgroundColor: '#8B5CF6',
-    paddingHorizontal: 24,
-    borderRadius: 12,
+  filePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#8B5CF6',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
   },
-  loadButtonText: {
+  filePickerText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
