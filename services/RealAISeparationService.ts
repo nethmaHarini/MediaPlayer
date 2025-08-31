@@ -16,7 +16,7 @@ export interface SeparatedTracks {
 
 class RealAISeparationService {
   private static instance: RealAISeparationService;
-  private readonly BACKEND_URL = 'http://localhost:5000'; // Local backend for development
+  private readonly BACKEND_URL = 'http://192.168.1.16:5000'; // Professional AI backend network IP
 
   public static getInstance(): RealAISeparationService {
     if (!RealAISeparationService.instance) {
@@ -26,7 +26,9 @@ class RealAISeparationService {
   }
 
   private constructor() {
-    console.log('🎵 Real AI Separation Service initialized (Librosa Backend)');
+    console.log(
+      '🎵 Real AI Separation Service initialized (Professional AI Backend)'
+    );
     console.log(`📡 Backend URL: ${this.BACKEND_URL}`);
   }
 
@@ -55,14 +57,14 @@ class RealAISeparationService {
         throw new Error('Audio file not found');
       }
 
-      // Create file object for upload
+      // Create file object for upload (React Native format)
       const audioFile = {
         uri: audioUri,
-        type: 'audio/mp3',
+        type: 'audio/mpeg', // More specific MIME type
         name: 'audio.mp3',
       } as any;
 
-      formData.append('file', audioFile); // backend expects 'file' field
+      formData.append('audio', audioFile); // backend expects 'audio' field
 
       onProgress?.({
         stage: 'uploading',
@@ -75,9 +77,7 @@ class RealAISeparationService {
       const response = await fetch(`${this.BACKEND_URL}/separate`, {
         method: 'POST',
         body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        // Don't set Content-Type - let the browser set it with boundary
       });
 
       if (!response.ok) {
@@ -127,8 +127,8 @@ class RealAISeparationService {
       console.error('❌ Backend health check failed:', error);
       throw new Error(
         `Cannot connect to AI backend at ${this.BACKEND_URL}. ` +
-          'Make sure the Python Librosa backend is running. ' +
-          'Run "python backend/app-librosa.py" to start it.'
+          'Make sure the Professional AI backend is running. ' +
+          'Run "python backend/app-professional.py" to start it.'
       );
     }
   }
@@ -144,13 +144,13 @@ class RealAISeparationService {
       intermediates: true,
     });
 
-    // The backend returns direct URLs for each track
+    // The backend returns track filenames in result.tracks
     const trackMappings = {
-      vocals: result.vocals_url,
-      drums: result.drums_url,
-      bass: result.bass_url,
-      other: result.other_url,
-      instrumental: result.other_url, // Use 'other' as instrumental
+      vocals: result.tracks?.vocals,
+      drums: result.tracks?.drums,
+      bass: result.tracks?.bass,
+      other: result.tracks?.other,
+      instrumental: result.tracks?.accompaniment, // Use 'accompaniment' as instrumental
     };
 
     const downloadedTracks: any = {};
@@ -169,8 +169,10 @@ class RealAISeparationService {
         message: `Downloading ${trackName} track...`,
       });
 
-      // Create full URL for download
-      const fullUrl = `${this.BACKEND_URL}${trackUrl}`;
+      // Create full URL for download using the backend's download endpoint
+      const trackType =
+        trackName === 'instrumental' ? 'accompaniment' : trackName;
+      const fullUrl = `${this.BACKEND_URL}/download/${trackType}/${trackUrl}`;
 
       console.log(`📥 Downloading ${trackName}: ${fullUrl}`);
 
