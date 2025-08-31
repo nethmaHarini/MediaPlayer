@@ -39,7 +39,7 @@ A professional React Native music player with advanced AI-powered source separat
 Choose the best option for your environment:
 
 ```bash
-# Unix/Linux/Mac/Git Bash users
+# Unix/Linux/Mac/Git Bash users (most common)
 chmod +x run.sh
 ./run.sh
 ```
@@ -50,19 +50,22 @@ run.bat
 ```
 
 ```powershell
-# Windows users (PowerShell - alternative)
-run.ps1
+# Windows users (PowerShell)
+./run.ps1
 ```
 
 **Windows Users:** You can also double-click `run.bat` for a GUI experience!
 
+> **💡 Tip:** The `run.sh` script works perfectly in Git Bash on Windows and includes advanced Windows compatibility features.
+
 That's it! The script will:
 
-- ✅ Check all requirements (Python, Node.js, files)
-- ✅ Start both backend and frontend in separate terminals
+- ✅ Check all requirements (Python 3.8+, Node.js 16+, project files)
+- ✅ Detect your environment (Windows, Linux, Mac, Git Bash)
+- ✅ Start backend and frontend in separate terminals automatically
 - ✅ Provide clear status updates and service URLs
-- ✅ Handle all path issues automatically
-- ✅ Start both backend and frontend in separate terminals
+- ✅ Handle all path issues automatically (including spaces in directory names)
+- ✅ Create optimized launch configurations for your platform
 
 ### 🔍 What Happens When You Run `./run.sh`
 
@@ -75,10 +78,11 @@ That's it! The script will:
 
 **Step 2: Smart Environment Detection**
 
-- **Windows PowerShell**: Uses advanced PowerShell launcher
-- **Git Bash**: Uses Windows-compatible shell script
-- **Linux/Mac**: Uses native Unix launcher
-- **Fallback**: Uses basic batch file if needed
+- **Git Bash on Windows**: Uses advanced cross-platform script with Windows compatibility
+- **Windows Command Prompt**: Uses optimized batch file with dynamic path handling
+- **Windows PowerShell**: Uses PowerShell script with execution policy management
+- **Linux/Mac**: Uses native Unix shell launcher
+- **Automatic Fallback**: Detects best available method for your system
 
 **Step 3: Service Launch**
 
@@ -105,14 +109,14 @@ npx expo start --tunnel --clear
 
 ### Start Script Benefits
 
-- ✅ **Single entry point** - just run `./run.sh`
-- ✅ **Automatic requirements checking** before launch
-- ✅ **Smart environment detection** - picks optimal method automatically
-- ✅ **Separate log monitoring** for backend and frontend
-- ✅ **Cross-platform support** (Windows, Linux, Mac, Git Bash)
-- ✅ **Smart path handling** - works with spaces in directory names
-- ✅ **Professional developer experience** with clear status messages
-- ✅ **Organized script structure** - clean and minimal file organization
+- ✅ **Single entry point** - just run `./run.sh` (works everywhere!)
+- ✅ **Automatic requirements checking** - Python 3.8+, Node.js 16+, project files
+- ✅ **Smart environment detection** - optimal method for your platform
+- ✅ **Separate terminal monitoring** - dedicated windows for backend and frontend
+- ✅ **Universal cross-platform support** - Windows, Linux, Mac, Git Bash, WSL
+- ✅ **Bulletproof path handling** - handles spaces and special characters
+- ✅ **Professional developer experience** - clear status messages and guidance
+- ✅ **Minimal, organized structure** - clean file organization, maximum functionality
 
 ## 📋 Script Structure
 
@@ -129,20 +133,21 @@ MediaPlayer/
 
 ## ⚡ Quick Commands Summary
 
-| Action            | Command                         | Platform                |
-| ----------------- | ------------------------------- | ----------------------- |
-| **🎯 Start App**  | `./run.sh`                      | Unix/Linux/Mac/Git Bash |
-| **🎯 Start App**  | Double-click `run.bat`          | Windows (GUI)           |
-| **🔍 Check Only** | `scripts/check-requirements.sh` | All (manual)            |
+| Action            | Command                         | Platform                     |
+| ----------------- | ------------------------------- | ---------------------------- |
+| **🎯 Start App**  | `./run.sh`                      | Unix/Linux/Mac/Git Bash      |
+| **🎯 Start App**  | `run.bat` or double-click       | Windows (Command Prompt/GUI) |
+| **🎯 Start App**  | `./run.ps1`                     | Windows (PowerShell)         |
+| **🔍 Check Only** | `scripts/check-requirements.sh` | All platforms (manual check) |
 
 ### ✨ What Makes This Better
 
-- **🎯 Single Entry Point**: Just one command to rule them all
-- **🔧 Auto-Management**: All platform-specific logic handled internally
-- **📁 Clean Organization**: Minimal script files, maximum functionality
-- **🌐 Universal**: Works on Windows, Mac, Linux, Git Bash, WSL
-- **🛡️ Bulletproof**: Comprehensive error checking and path handling
-- **🎨 User-Friendly**: Clear status messages and helpful guidance
+- **🎯 Single Entry Point**: One script (`run.sh`) works everywhere - Git Bash, Linux, Mac, WSL
+- **🔧 Intelligent Auto-Management**: Detects your environment and uses the best launch method
+- **📁 Clean, Minimal Organization**: Only essential scripts, maximum functionality
+- **🌐 True Universal Compatibility**: Tested on Windows, Mac, Linux, Git Bash, WSL
+- **🛡️ Bulletproof Reliability**: Comprehensive error checking and robust path handling
+- **🎨 Professional User Experience**: Clear status messages, helpful guidance, and smooth workflow
 
 ## 🔧 Troubleshooting
 
