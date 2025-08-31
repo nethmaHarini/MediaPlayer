@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  TextInput,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -129,8 +130,8 @@ export default function PlayerScreen() {
       });
 
       setSound(newSound);
-      setCurrentSong(uri.split('/').pop()?.split('.')[0] || 'Unknown Song');
       setAudioUri(uri); // Store URI for separation tab
+      // Note: Don't set currentSong here as it's already set by the caller with proper title extraction
     } catch (error) {
       console.error('Error loading audio:', error);
       Alert.alert('Error', 'Failed to load audio file');
@@ -147,8 +148,97 @@ export default function PlayerScreen() {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const file = result.assets[0];
         setSelectedFile(result);
-        setCurrentSong(file.name);
+
+        console.log('File info:', {
+          name: file.name,
+          uri: file.uri,
+          size: file.size,
+          mimeType: file.mimeType,
+        });
+
+        // Extract a clean song title from filename
+        let songTitle = file.name;
+
+        // First, decode any URI encoding
+        try {
+          songTitle = decodeURIComponent(songTitle);
+          console.log('After URI decode:', songTitle);
+        } catch (e) {
+          // If decoding fails, use the original name
+          console.log('URI decoding failed, using original name');
+        }
+
+        // If we still have weird characters or the name looks like an ID, use a default
+        if (
+          !songTitle ||
+          songTitle.length < 3 ||
+          /^[a-zA-Z0-9%:]+$/.test(songTitle) ||
+          songTitle.includes('msf')
+        ) {
+          console.log('Name appears to be an ID, trying to extract from URI');
+          // Try to get a better name from the URI
+          const uriParts = file.uri.split('/');
+          const lastPart = uriParts[uriParts.length - 1];
+          console.log('URI last part:', lastPart);
+
+          if (lastPart && lastPart !== songTitle) {
+            try {
+              songTitle = decodeURIComponent(lastPart);
+              console.log('Decoded URI part:', songTitle);
+            } catch (e) {
+              songTitle = lastPart;
+            }
+          }
+
+          // If still not good, check if we can extract from file type or use a smart default
+          if (
+            !songTitle ||
+            songTitle.length < 3 ||
+            /^[a-zA-Z0-9%:]+$/.test(songTitle) ||
+            songTitle.includes('msf')
+          ) {
+            // Try to create a meaningful name based on timestamp
+            const now = new Date();
+            songTitle = `My Song ${now
+              .getHours()
+              .toString()
+              .padStart(2, '0')}:${now
+              .getMinutes()
+              .toString()
+              .padStart(2, '0')}`;
+            console.log('Using fallback name:', songTitle);
+          }
+        }
+
+        // Clean up the title
+        // Remove file extension
+        songTitle = songTitle.replace(/\.[^/.]+$/, '');
+        // Replace underscores and dashes with spaces
+        songTitle = songTitle.replace(/[_-]/g, ' ');
+        // Remove extra spaces
+        songTitle = songTitle.replace(/\s+/g, ' ').trim();
+        // Capitalize first letter of each word
+        songTitle = songTitle.replace(/\b\w/g, (l) => l.toUpperCase());
+
+        // Final fallback
+        if (!songTitle || songTitle.length < 1) {
+          const now = new Date();
+          songTitle = `Audio ${now.getHours().toString().padStart(2, '0')}:${now
+            .getMinutes()
+            .toString()
+            .padStart(2, '0')}`;
+        }
+
+        console.log('Final song title:', songTitle);
+
+        // Set the song title first
+        setCurrentSong(songTitle);
+
+        // Load the audio
         await loadAudio(file.uri);
+
+        // Force update the context with the clean title
+        setCurrentSong(songTitle);
       }
     } catch (error) {
       console.error('Error picking file:', error);

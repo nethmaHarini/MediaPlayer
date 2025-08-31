@@ -236,29 +236,8 @@ export default function SeparationScreen() {
     setProcessingProgress(0);
     setSeparationComplete(false);
 
-    try {
-      const currentModel = availableModels.find((m) => m.id === selectedModel);
-      const modelName = currentModel ? currentModel.name : 'Professional AI';
-      const qualityText = highQuality ? 'High Quality' : 'Standard Quality';
-
-      Alert.alert(
-        'Professional AI Separation',
-        `This will separate your audio using advanced AI models:\n\n🔬 Selected Model: ${modelName}\n⚡ Quality: ${qualityText}\n💾 Audio Format: ${audioFormat.toUpperCase()}\n📁 Save Location: ${
-          autoSave ? saveLocation : 'Ask on download'
-        }\n\n🎼 Professional Features:\n   • Advanced ICA (Independent Component Analysis)\n   • Multi-scale spectral analysis\n   • Studio-grade EQ and dynamics\n   • Professional audio processing\n\nEach track will contain professionally isolated audio elements!`,
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => setIsProcessing(false),
-          },
-          { text: 'Continue', onPress: () => performRealSeparation() },
-        ]
-      );
-    } catch (error) {
-      console.error('Setup failed:', error);
-      setIsProcessing(false);
-    }
+    // Start separation immediately without confirmation dialog
+    performRealSeparation();
   };
 
   const performRealSeparation = async () => {
@@ -341,17 +320,17 @@ export default function SeparationScreen() {
       setTracks(updatedTracks);
       setSeparationComplete(true);
       Alert.alert(
-        'Professional AI separation complete! 🎉',
-        'Your audio has been processed with advanced AI models! Each track contains professionally separated audio elements. Mix them independently for studio-quality results!'
+        '🎉 Separation Complete!',
+        `Great! Your song has been successfully separated into individual tracks.\n\n🎵 You can now:\n• Adjust volume for each track\n• Mute/unmute instruments\n• Download separated tracks\n• Create custom mixes\n\nEnjoy experimenting with your music!`
       );
     } catch (error) {
       console.error('Vocal isolation failed:', error);
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
       Alert.alert(
-        'Professional AI Separation Failed',
-        `AI separation failed: ${errorMessage}\n\nTroubleshooting:\n• Check backend: python backend/app-professional.py\n• Verify http://localhost:5000/health\n• Ensure supported audio formats (MP3/WAV)\n• Check audio file quality and size`,
-        [{ text: 'OK', style: 'cancel' }]
+        'Oops! Something went wrong 😔',
+        `We couldn't separate your audio right now.\n\n💡 Quick fixes to try:\n• Make sure your song is in MP3 or WAV format\n• Check your internet connection\n• Try restarting the app\n\nDon't worry, your original file is safe!`,
+        [{ text: 'Got it', style: 'cancel' }]
       );
     } finally {
       setIsProcessing(false);
