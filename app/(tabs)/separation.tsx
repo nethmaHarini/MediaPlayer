@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
@@ -136,18 +137,245 @@ export default function SeparationScreen() {
   const [playbackUpdateInterval, setPlaybackUpdateInterval] =
     useState<NodeJS.Timeout | null>(null);
 
+  // Ref to track the previous song to avoid unnecessary resets
+  const previousSongRef = useRef<string>('');
+
+  // Stop main audio whenever the separation tab becomes focused
+  useFocusEffect(
+    useRef(() => {
+      const stopMainAudioOnFocus = async () => {
+        if (mainSound) {
+          try {
+            const status = await mainSound.getStatusAsync();
+            console.log('Main audio status on focus:', {
+              isLoaded: status.isLoaded,
+              isPlaying: status.isLoaded ? (status as any).isPlaying : false,
+              position: status.isLoaded ? (status as any).positionMillis : 0,
+            });
+
+            if (status.isLoaded) {
+              // Always try to stop, regardless of reported playing state
+              await mainSound.stopAsync();
+              console.log(
+                'Forced stop of main audio when separation tab became focused'
+              );
+
+              // Verify it actually stopped
+              const newStatus = await mainSound.getStatusAsync();
+              const isStillPlaying = newStatus.isLoaded
+                ? (newStatus as any).isPlaying
+                : false;
+              console.log('After stop - isPlaying:', isStillPlaying);
+
+              // If still playing, try pause as backup
+              if (isStillPlaying) {
+                await mainSound.pauseAsync();
+                console.log('Used pauseAsync as backup to stop audio');
+              }
+            }
+          } catch (error) {
+            console.error('Error stopping main audio on focus:', error);
+          }
+        }
+      };
+
+      stopMainAudioOnFocus();
+
+      // Cleanup function (called when tab loses focus)
+      return () => {
+        // No cleanup needed for this case
+      };
+    }).current
+  );
+
+  // Reset separation state when a new song is loaded
   useEffect(() => {
-    // Stop main audio when entering separation tab
-    const stopMainAudio = async () => {
+    // Only reset if the song actually changed and we have separation results
+    if (audioUri && currentSong && currentSong !== previousSongRef.current) {
+      const hadPreviousSeparation =
+        separationComplete || tracks.some((t) => t.sound);
+
+      if (hadPreviousSeparation && previousSongRef.current) {
+        console.log(
+          `Song changed from "${previousSongRef.current}" to "${currentSong}", clearing separation results`
+        );
+
+        // Stop main audio if it's playing the old song
+        const stopMainAudio = async () => {
+          if (mainSound) {
+            try {
+              const status = await mainSound.getStatusAsync();
+              if (status.isLoaded && status.isPlaying) {
+                await mainSound.stopAsync();
+                console.log('Stopped main audio due to song change');
+              }
+            } catch (error) {
+              console.error('Error stopping main audio on song change:', error);
+            }
+          }
+        };
+
+        stopMainAudio();
+
+        // Stop and unload all track sounds safely
+        const cleanupSounds = async () => {
+          const cleanupPromises = tracks
+            .filter((track) => track.sound)
+            .map(async (track) => {
+              try {
+                if (track.sound) {
+                  // Check if sound is loaded before trying to stop it
+                  const status = await track.sound.getStatusAsync();
+                  if (status.isLoaded) {
+                    // Only stop if it's currently playing
+                    if (status.isPlaying) {
+                      await track.sound.stopAsync();
+                    }
+                    // Always try to unload if it's loaded
+                    await track.sound.unloadAsync();
+                  }
+                }
+              } catch (error) {
+                console.error(`Error cleaning up ${track.name} sound:`, error);
+                // Continue cleanup even if this track fails
+              }
+            });
+
+          await Promise.all(cleanupPromises);
+        };
+
+        cleanupSounds();
+
+        // Reset tracks to initial state
+        setTracks([
+          {
+            id: 'vocals',
+            name: 'Vocals',
+            icon: Mic,
+            volume: 1.0,
+            isMuted: false,
+            color: '#EF4444',
+            sound: null,
+          },
+          {
+            id: 'instrumental',
+            name: 'Instrumental',
+            icon: Music,
+            volume: 0.0,
+            isMuted: false,
+            color: '#3B82F6',
+            sound: null,
+          },
+          {
+            id: 'drums',
+            name: 'Drums',
+            icon: Music,
+            volume: 0.0,
+            isMuted: false,
+            color: '#F59E0B',
+            sound: null,
+          },
+          {
+            id: 'bass',
+            name: 'Bass',
+            icon: Music,
+            volume: 0.0,
+            isMuted: false,
+            color: '#10B981',
+            sound: null,
+          },
+          {
+            id: 'other',
+            name: 'Other',
+            icon: Music,
+            volume: 0.0,
+            isMuted: false,
+            color: '#8B5CF6',
+            sound: null,
+          },
+        ]);
+
+        // Reset separation state
+        setSeparationComplete(false);
+        setIsProcessing(false);
+        setProcessingProgress(0);
+        setIsPlaying(false);
+        setPosition(0);
+        setDuration(0);
+
+        // Clear global separated tracks
+        setGlobalSeparatedTracks([]);
+
+        // Clear playback interval
+        if (playbackUpdateInterval) {
+          clearInterval(playbackUpdateInterval);
+          setPlaybackUpdateInterval(null);
+        }
+      }
+
+      // Update the previous song reference
+      previousSongRef.current = currentSong;
+    }
+  }, [audioUri, currentSong, separationComplete, tracks]); // Watch for changes in audioUri and currentSong
+
+  // Additional effect to ensure main audio stops when in separation tab
+  useEffect(() => {
+    const stopMainAudioIfPlaying = async () => {
       if (mainSound) {
         try {
-          await mainSound.pauseAsync();
+          const status = await mainSound.getStatusAsync();
+          if (status.isLoaded) {
+            const isPlaying = (status as any).isPlaying;
+            if (isPlaying) {
+              await mainSound.stopAsync();
+              console.log('Ensured main audio is stopped in separation tab');
+            }
+          }
         } catch (error) {
-          console.error('Error stopping main audio:', error);
+          console.error('Error ensuring main audio is stopped:', error);
         }
       }
     };
 
+    // Stop main audio whenever mainSound changes (new song loaded) or when entering tab
+    stopMainAudioIfPlaying();
+  }, [mainSound]); // Watch for changes in mainSound
+
+  useEffect(() => {
+    // Immediately stop main audio when entering separation tab or when song changes
+    const stopMainAudio = async () => {
+      if (mainSound) {
+        try {
+          // Always try to stop if loaded, regardless of reported playing state
+          const status = await mainSound.getStatusAsync();
+          if (status.isLoaded) {
+            // Force stop regardless of playing state
+            await mainSound.stopAsync();
+            console.log(
+              'Force stopped main audio when entering separation tab'
+            );
+
+            // Verify it stopped
+            const newStatus = await mainSound.getStatusAsync();
+            const stillPlaying = newStatus.isLoaded
+              ? (newStatus as any).isPlaying
+              : false;
+            if (stillPlaying) {
+              await mainSound.pauseAsync();
+              console.log('Used pause as backup - audio should now be stopped');
+            }
+          } else {
+            console.log('Main audio is not loaded');
+          }
+        } catch (error) {
+          console.error('Error stopping main audio:', error);
+        }
+      } else {
+        console.log('No main sound to stop');
+      }
+    };
+
+    // Stop immediately
     stopMainAudio();
 
     // Initialize audio mode for multiple tracks
@@ -538,7 +766,7 @@ export default function SeparationScreen() {
       ) : !separationComplete ? (
         <View style={styles.setupContainer}>
           <Text style={styles.setupTitle}>
-            � Professional AI Music Source Separation
+            🎵 Professional AI Music Source Separation
           </Text>
           <Text style={styles.setupDescription}>
             Current song: {currentSong}
